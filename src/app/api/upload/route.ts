@@ -29,7 +29,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No file provided. Use form-data with a "file" field.' }, { status: 400 })
     }
 
-    // Validate
     const validationError = validateUpload({
       name: file.name,
       type: file.type,
@@ -39,7 +38,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: validationError }, { status: 400 })
     }
 
-    // Determine the path prefix based on file type
     let prefix = 'uploads'
     if (file.type.startsWith('video/')) prefix = 'videos'
     else if (file.type.startsWith('image/')) prefix = 'images'

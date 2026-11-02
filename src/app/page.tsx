@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import TodoWidget from '@/features/todos/TodoWidget'
+import AuthModal from '@/components/AuthModal'
 
 // ═══════════════════════════════════════════════════════════════
 //  Data
@@ -111,6 +112,9 @@ export default function Home() {
     order: number; title: string; description: string; duration: number; visualCues: string[]; narration: string
   }> | null>(null)
   const [geminiEnabled, setGeminiEnabled] = useState(false)
+  const [authOpen, setAuthOpen] = useState(false)
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login')
+  const [user, setUser] = useState<{ id: string; email: string } | null>(null)
 
   // Toggle dark mode class on <html>
   useEffect(() => {
@@ -181,10 +185,13 @@ export default function Home() {
     setStoryboard(null)
   }
 
+  const openLogin = () => { setAuthMode('login'); setAuthOpen(true) }
+  const openSignup = () => { setAuthMode('signup'); setAuthOpen(true) }
+
   return (
     <div className="min-h-screen bg-background text-foreground mesh-bg overflow-x-hidden">
       {/* ─── Nav ─── */}
-      <Navbar darkMode={darkMode} setDarkMode={setDarkMode} menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
+      <Navbar darkMode={darkMode} setDarkMode={setDarkMode} menuOpen={menuOpen} setMenuOpen={setMenuOpen} onLogin={openLogin} onSignup={openSignup} user={user} />
 
       {/* ─── Hero ─── */}
       <Hero onGenerate={handleGenerate} prompt={prompt} setPrompt={setPrompt} />
@@ -228,6 +235,14 @@ export default function Home() {
 
       {/* ─── Footer ─── */}
       <Footer />
+
+      {/* ─── Auth Modal ─── */}
+      <AuthModal
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        initialMode={authMode}
+        onSuccess={(u) => setUser(u)}
+      />
     </div>
   )
 }
@@ -236,9 +251,11 @@ export default function Home() {
 //  Navbar
 // ═══════════════════════════════════════════════════════════════
 
-function Navbar({ darkMode, setDarkMode, menuOpen, setMenuOpen }: {
+function Navbar({ darkMode, setDarkMode, menuOpen, setMenuOpen, onLogin, onSignup, user }: {
   darkMode: boolean; setDarkMode: (v: boolean) => void
   menuOpen: boolean; setMenuOpen: (v: boolean) => void
+  onLogin: () => void; onSignup: () => void
+  user: { id: string; email: string } | null
 }) {
   return (
     <header className="sticky top-0 z-50 glass border-b border-border/40">
@@ -273,10 +290,28 @@ function Navbar({ darkMode, setDarkMode, menuOpen, setMenuOpen }: {
             >
               {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </Button>
-            <Button variant="ghost" className="hidden sm:flex text-sm font-medium">Sign in</Button>
-            <Button className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white shadow-lg shadow-purple-500/25">
-              Get started <ArrowRight className="w-4 h-4 ml-1" />
-            </Button>
+            {user ? (
+              <div className="flex items-center gap-3">
+                <span className="hidden sm:flex items-center gap-2 text-sm">
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold">
+                    {user.email[0].toUpperCase()}
+                  </div>
+                  {user.email.split('@')[0]}
+                </span>
+              </div>
+            ) : (
+              <>
+                <Button variant="ghost" className="hidden sm:flex text-sm font-medium" onClick={onLogin}>
+                  Sign in
+                </Button>
+                <Button
+                  className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white shadow-lg shadow-purple-500/25"
+                  onClick={onSignup}
+                >
+                  Get started <ArrowRight className="w-4 h-4 ml-1" />
+                </Button>
+              </>
+            )}
             <Button
               variant="ghost"
               size="icon"
