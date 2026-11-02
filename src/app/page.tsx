@@ -107,15 +107,18 @@ export default function Home() {
   const [genComplete, setGenComplete] = useState(false)
   const [generationId, setGenerationId] = useState<string | null>(null)
   const [genError, setGenError] = useState('')
+  const [storyboard, setStoryboard] = useState<Array<{
+    order: number; title: string; description: string; duration: number; visualCues: string[]; narration: string
+  }> | null>(null)
+  const [geminiEnabled, setGeminiEnabled] = useState(false)
 
   // Toggle dark mode class on <html>
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode)
   }, [darkMode])
 
-  // Generation pipeline — creates a real DB record + animates the pipeline.
-  // Even if no AI provider is wired up yet, the generation request persists
-  // in Supabase so the user's history is tracked.
+  // Generation pipeline — creates a real DB record + calls Gemini AI +
+  // animates the pipeline.
   const handleGenerate = async () => {
     if (!prompt.trim() || generating) return
     setGenError('')
@@ -123,8 +126,9 @@ export default function Home() {
     setGenStep(0)
     setGenerating(true)
     setGenerationId(null)
+    setStoryboard(null)
 
-    // Step 1: Create the generation record in Supabase (real DB write)
+    // Step 1: Create the generation record in Supabase + call Gemini
     try {
       const res = await fetch('/api/generations', {
         method: 'POST',
@@ -132,7 +136,7 @@ export default function Home() {
         body: JSON.stringify({
           type: 'TEXT_TO_VIDEO',
           prompt: prompt.trim(),
-          provider: 'demo',
+          provider: 'google-gemini',
         }),
       })
       if (!res.ok) {
@@ -141,9 +145,17 @@ export default function Home() {
       }
       const data = await res.json()
       setGenerationId(data.generation.id)
+      setGeminiEnabled(data.geminiEnabled || false)
+      if (data.storyboard?.scenes) {
+        setStoryboard(data.storyboard.scenes)
+      }
+      if (data.aiError) {
+        setGenError(`AI: ${data.aiError}`)
+      } else if (!data.dbEnabled) {
+        setGenError('DB not connected — generation not persisted')
+      }
     } catch (err) {
-      // DB write failed — still run the simulated pipeline so the demo works
-      setGenError(err instanceof Error ? err.message : 'Could not save to DB — running simulation only')
+      setGenError(err instanceof Error ? err.message : 'Generation failed')
     }
 
     // Step 2: Animate the simulated pipeline (7 steps)
@@ -166,6 +178,7 @@ export default function Home() {
     setGenStep(0)
     setGenerationId(null)
     setGenError('')
+    setStoryboard(null)
   }
 
   return (
@@ -185,6 +198,8 @@ export default function Home() {
         onReset={handleReset}
         generationId={generationId}
         genError={genError}
+        storyboard={storyboard}
+        geminiEnabled={geminiEnabled}
       />
 
       {/* ─── Stats ─── */}
@@ -389,7 +404,7 @@ function Hero({ onGenerate, prompt, setPrompt }: {
 //  Generation Demo (simulated pipeline)
 // ═══════════════════════════════════════════════════════════════
 
-function GenerationDemo({ prompt, generating, genStep, genComplete, onReset, generationId, genError }: {
+function GenerationDemo({ prompt, generating, genStep, genComplete, onReset, generationId, genError, storyboard, geminiEnabled }: {
   prompt: string
   generating: boolean
   genStep: number
@@ -397,8 +412,12 @@ function GenerationDemo({ prompt, generating, genStep, genComplete, onReset, gen
   onReset: () => void
   generationId: string | null
   genError: string
+  storyboard: Array<{
+    order: number; title: string; description: string; duration: number; visualCues: string[]; narration: string
+  }> | null
+  geminiEnabled: boolean
 }) {
-  const showDemo = generating || genComplete
+  const showDemo = generating || genComplete || !!storyboard
   if (!showDemo && !prompt) return null
 
   return (
@@ -516,6 +535,54 @@ function GenerationDemo({ prompt, generating, genStep, genComplete, onReset, gen
                     })}
                   </div>
                 </div>
+
+                {/* Real AI storyboard from Gemini */}
+                {storyboard && storyboard.length > 0 && (
+                  <div className="mt-4 p-4 bg-gradient-to-br from-purple-500/5 to-pink-500/5 border border-purple-500/20 rounded-lg">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Brain className="w-4 h-4 text-purple-500" />
+                      <span className="text-sm font-bold">
+                        AI Storyboard
+                        {geminiEnabled && (
+                          <span className="ml-2 text-xs font-normal text-purple-500">
+                            via Google Gemini
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {storyboard.map((scene, i) => (
+                        <motion.div
+                          key={i}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.1 }}
+                          className="flex gap-3 p-3 bg-background/50 rounded-lg border border-border/40"
+                        >
+                          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold">
+                            {scene.order}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold">{scene.title}</span>
+                              <Badge variant="outline" className="text-xs">{scene.duration}s</Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{scene.description}</p>
+                            {scene.visualCues?.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {scene.visualCues.slice(0, 4).map((cue, ci) => (
+                                  <span key={ci} className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-300">
+                                    {cue}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </Card>
             </motion.div>
           )}
