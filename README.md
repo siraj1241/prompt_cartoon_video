@@ -74,8 +74,8 @@ See [AI_PROVIDERS.md](./AI_PROVIDERS.md) for the full provider catalog and how t
 | Styling | Tailwind CSS 4, shadcn/ui (New York) |
 | Animations | Framer Motion, GSAP |
 | 3D | Three.js, React Three Fiber |
-| Database | PostgreSQL + Prisma ORM |
-| Auth | NextAuth.js (role-based) |
+| Database | **Supabase (PostgreSQL)** ✅ wired up — see [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) |
+| Auth | Supabase Auth / NextAuth.js (role-based) |
 | Storage | S3-compatible (AWS S3 / MinIO) |
 | Queue | Redis + BullMQ |
 | State | Zustand (client), TanStack Query (server) |

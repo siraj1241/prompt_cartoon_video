@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
+import TodoWidget from '@/features/todos/TodoWidget'
 
 // ═══════════════════════════════════════════════════════════════
 //  Data
@@ -167,6 +168,9 @@ export default function Home() {
 
       {/* ─── Architecture ─── */}
       <ArchitectureSection />
+
+      {/* ─── Live Supabase Demo ─── */}
+      <TodoWidget />
 
       {/* ─── Pricing ─── */}
       <PricingSection />
