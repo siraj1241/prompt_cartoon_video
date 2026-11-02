@@ -1,0 +1,362 @@
+// ═══════════════════════════════════════════════════════════════
+//  PromptReel — AI Video Generation Platform
+//  Prisma Schema
+// ═══════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ──────────────────────────────────────────────────────
+
+enum UserRole {
+  FREE
+  CREATOR
+  STUDIO
+  ADMIN
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+}
+
+enum ProjectStatus {
+  DRAFT
+  GENERATING
+  READY
+  EXPORTING
+  EXPORTED
+  FAILED
+}
+
+enum GenerationType {
+  TEXT_TO_VIDEO
+  IMAGE_TO_VIDEO
+  VIDEO_TO_VIDEO
+  SCRIPT_TO_VIDEO
+  IMAGE_GENERATION
+  VOICE_SYNTHESIS
+  DUBBING
+  TRANSLATION
+  SUBTITLES
+  UPSCALING
+  SUMMARIZATION
+}
+
+enum GenerationStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum AssetType {
+  VIDEO
+  IMAGE
+  AUDIO
+  SUBTITLE
+  AVATAR
+  THUMBNAIL
+}
+
+enum TrackType {
+  VIDEO
+  AUDIO
+  TEXT
+  EFFECT
+}
+
+// ─── User & Auth ────────────────────────────────────────────────
+
+model User {
+  id            String              @id @default(cuid())
+  email         String              @unique
+  name          String?
+  image         String?
+  passwordHash  String?
+  role          UserRole            @default(FREE)
+  credits       Int                 @default(10)
+  emailVerified DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  subscription  Subscription?
+  projects      Project[]
+  generations   Generation[]
+  assets        Asset[]
+  apiKeys       ApiKey[]
+  usageLogs     UsageLog[]
+
+  @@index([email])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─── Subscription & Billing ─────────────────────────────────────
+
+model Subscription {
+  id                 String             @id @default(cuid())
+  userId             String             @unique
+  status             SubscriptionStatus @default(TRIALING)
+  plan               UserRole           @default(FREE)
+  stripeCustomerId   String?
+  stripeSubId        String?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean            @default(false)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CreditTransaction {
+  id          String   @id @default(cuid())
+  userId      String
+  amount      Int      // positive = credit added, negative = credit used
+  reason      String   // "generation", "topup", "refund", "bonus"
+  metadata    String?  // JSON string with generation details
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ─── Projects ───────────────────────────────────────────────────
+
+model Project {
+  id          String        @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  status      ProjectStatus @default(DRAFT)
+  thumbnail   String?
+  duration    Float?        // in seconds
+  resolution  String?       // "1920x1080", "1080x1920" etc.
+  fps         Int           @default(30)
+  language    String        @default("en")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generations Generation[]
+  scenes      Scene[]
+  tracks      Track[]
+  exports     Export[]
+  assets      ProjectAsset[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ─── AI Generations ─────────────────────────────────────────────
+
+model Generation {
+  id          String           @id @default(cuid())
+  userId      String
+  projectId   String?
+  type        GenerationType
+  status      GenerationStatus @default(QUEUED)
+  provider    String           // "runway", "pika", "stable-video-diffusion" etc.
+  prompt      String?
+  negativePrompt String?
+  inputAssetIds String         // JSON array of asset IDs
+  outputAssetIds String        // JSON array of output asset IDs
+  parameters  String           // JSON: duration, fps, resolution, style, etc.
+  language    String?
+  creditsUsed Int              @default(0)
+  errorMessage String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime         @default(now())
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([status])
+}
+
+// ─── Scenes (for script-to-video pipeline) ──────────────────────
+
+model Scene {
+  id          String   @id @default(cuid())
+  projectId   String
+  order       Int      // scene order in the video
+  title       String?
+  description String?  // visual description of the scene
+  script      String?  // narration / dialogue text
+  duration    Float?   // in seconds
+  thumbnail   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+// ─── Video Editor ───────────────────────────────────────────────
+
+model Track {
+  id        String    @id @default(cuid())
+  projectId String
+  type      TrackType
+  name      String
+  order     Int
+  muted     Boolean   @default(false)
+  locked    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  clips     Clip[]
+
+  @@index([projectId])
+}
+
+model Clip {
+  id          String   @id @default(cuid())
+  trackId     String
+  assetId     String?  // reference to Asset
+  name        String
+  start       Float    // start time on timeline (seconds)
+  duration    Float    // clip duration (seconds)
+  trimStart   Float    @default(0) // trim from source start
+  trimEnd     Float    @default(0) // trim from source end
+  volume      Float    @default(1.0)
+  speed       Float    @default(1.0)
+  opacity     Float    @default(1.0)
+  textContent String?  // for text/subtitle tracks
+  textStyle   String?  // JSON: font, color, position
+  transition  String?  // JSON: transition type + duration
+  effects     String?  // JSON: filter/effect params
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  track       Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@index([trackId])
+}
+
+// ─── Assets (media library) ─────────────────────────────────────
+
+model Asset {
+  id          String    @id @default(cuid())
+  userId      String
+  type        AssetType
+  name        String
+  url         String    // S3 URL or CDN URL
+  thumbnail   String?
+  mimeType    String
+  size        Int       // in bytes
+  duration    Float?    // for video/audio
+  width       Int?
+  height      Int?
+  fps         Int?
+  language    String?   // for audio/subtitle assets
+  metadata    String?   // JSON: extra metadata
+  createdAt   DateTime  @default(now())
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectLinks ProjectAsset[]
+
+  @@index([userId])
+  @@index([type])
+}
+
+model ProjectAsset {
+  id        String @id @default(cuid())
+  projectId String
+  assetId   String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset     Asset   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, assetId])
+}
+
+// ─── Exports ────────────────────────────────────────────────────
+
+model Export {
+  id          String   @id @default(cuid())
+  projectId   String
+  format      String   // "mp4", "webm", "mov"
+  resolution  String   // "4k", "1080p", "720p"
+  platform    String?  // "youtube", "tiktok", "instagram"
+  url         String?  // export download URL
+  status      String   @default("pending") // pending, processing, completed, failed
+  size        Int?
+  createdAt   DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+// ─── API Keys (for programmatic access) ────────────────────────
+
+model ApiKey {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  keyHash     String   @unique // hashed API key
+  prefix      String   // first 8 chars for identification
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─── Usage Logs (for analytics + billing) ───────────────────────
+
+model UsageLog {
+  id          String   @id @default(cuid())
+  userId      String
+  action      String   // "generation", "export", "api_call"
+  resourceType String  // "video", "image", "audio"
+  resourceId  String?
+  creditsUsed Int      @default(0)
+  metadata    String?  // JSON
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}
