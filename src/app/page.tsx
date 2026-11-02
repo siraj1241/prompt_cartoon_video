@@ -105,19 +105,48 @@ export default function Home() {
   const [generating, setGenerating] = useState(false)
   const [genStep, setGenStep] = useState(0)
   const [genComplete, setGenComplete] = useState(false)
+  const [generationId, setGenerationId] = useState<string | null>(null)
+  const [genError, setGenError] = useState('')
 
   // Toggle dark mode class on <html>
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode)
   }, [darkMode])
 
-  // Simulated generation pipeline — runs on user action, not in an effect
-  const handleGenerate = () => {
-    if (!prompt.trim()) return
+  // Generation pipeline — creates a real DB record + animates the pipeline.
+  // Even if no AI provider is wired up yet, the generation request persists
+  // in Supabase so the user's history is tracked.
+  const handleGenerate = async () => {
+    if (!prompt.trim() || generating) return
+    setGenError('')
     setGenComplete(false)
     setGenStep(0)
     setGenerating(true)
+    setGenerationId(null)
 
+    // Step 1: Create the generation record in Supabase (real DB write)
+    try {
+      const res = await fetch('/api/generations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'TEXT_TO_VIDEO',
+          prompt: prompt.trim(),
+          provider: 'demo',
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `HTTP ${res.status}`)
+      }
+      const data = await res.json()
+      setGenerationId(data.generation.id)
+    } catch (err) {
+      // DB write failed — still run the simulated pipeline so the demo works
+      setGenError(err instanceof Error ? err.message : 'Could not save to DB — running simulation only')
+    }
+
+    // Step 2: Animate the simulated pipeline (7 steps)
     let step = 0
     const interval = setInterval(() => {
       step += 1
@@ -135,6 +164,8 @@ export default function Home() {
     setPrompt('')
     setGenComplete(false)
     setGenStep(0)
+    setGenerationId(null)
+    setGenError('')
   }
 
   return (
@@ -152,6 +183,8 @@ export default function Home() {
         genStep={genStep}
         genComplete={genComplete}
         onReset={handleReset}
+        generationId={generationId}
+        genError={genError}
       />
 
       {/* ─── Stats ─── */}
@@ -356,12 +389,14 @@ function Hero({ onGenerate, prompt, setPrompt }: {
 //  Generation Demo (simulated pipeline)
 // ═══════════════════════════════════════════════════════════════
 
-function GenerationDemo({ prompt, generating, genStep, genComplete, onReset }: {
+function GenerationDemo({ prompt, generating, genStep, genComplete, onReset, generationId, genError }: {
   prompt: string
   generating: boolean
   genStep: number
   genComplete: boolean
   onReset: () => void
+  generationId: string | null
+  genError: string
 }) {
   const showDemo = generating || genComplete
   if (!showDemo && !prompt) return null
@@ -441,6 +476,25 @@ function GenerationDemo({ prompt, generating, genStep, genComplete, onReset }: {
                     </span>
                   </div>
                   <Progress value={genComplete ? 100 : (genStep / PIPELINE_STEPS.length) * 100} className="h-2" />
+
+                  {/* Real DB record indicator */}
+                  {generationId && (
+                    <div className="mt-2 flex items-center gap-2 text-xs">
+                      <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                      <span className="text-muted-foreground">
+                        Saved to DB · ID: <code className="font-mono text-foreground">{generationId.slice(0, 8)}…</code>
+                      </span>
+                    </div>
+                  )}
+                  {genError && !generationId && (
+                    <div className="mt-2 flex items-center gap-2 text-xs">
+                      <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
+                      <span className="text-muted-foreground">
+                        DB not connected — running simulation only. {genError}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex flex-wrap gap-2 mt-3">
                     {PIPELINE_STEPS.map((step, i) => {
                       const Icon = step.icon
