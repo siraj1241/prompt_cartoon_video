@@ -111,7 +111,7 @@ export default function Home() {
   const [generationId, setGenerationId] = useState<string | null>(null)
   const [genError, setGenError] = useState('')
   const [storyboard, setStoryboard] = useState<Array<{
-    order: number; title: string; description: string; duration: number; visualCues: string[]; narration: string
+    order: number; title: string; description: string; duration: number; visualCues: string[]; narration: string; imageUrl?: string
   }> | null>(null)
   const [geminiEnabled, setGeminiEnabled] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
@@ -474,7 +474,7 @@ function GenerationDemo({ prompt, generating, genStep, genComplete, onReset, gen
   generationId: string | null
   genError: string
   storyboard: Array<{
-    order: number; title: string; description: string; duration: number; visualCues: string[]; narration: string
+    order: number; title: string; description: string; duration: number; visualCues: string[]; narration: string; imageUrl?: string
   }> | null
   geminiEnabled: boolean
   onPlay: () => void

@@ -1,17 +1,15 @@
 /**
- * Generations API route — create + list AI generation jobs.
+ * Generations API route — create AI generation jobs + generate images.
  *
- * Endpoints:
- *   GET  /api/generations       → list recent generations
- *   POST /api/generations       → create a new generation job
+ * When GOOGLE_AI_STUDIO_KEY is set:
+ *   1. Creates a DB record
+ *   2. Calls Gemini for storyboard (3-5 scenes)
+ *   3. For each scene, fetches an AI-generated image from Pollinations.ai (FREE, no API key)
+ *   4. Returns scenes with image URLs
  *
- * When GOOGLE_AI_STUDIO_KEY is set, the POST route also calls Gemini
- * to generate a real storyboard / script / text description from the
- * prompt. The result is stored in the generation record's `parameters`
- * field and returned to the client.
- *
- * If the key is not set, the route still creates the DB record but
- * skips the AI call (returns the record with status='QUEUED').
+ * If Gemini key is not set:
+ *   - Creates a basic storyboard from the prompt
+ *   - Still fetches images from Pollinations.ai
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -24,6 +22,32 @@ const VALID_TYPES: GenerationType[] = [
   'IMAGE_GENERATION', 'VOICE_SYNTHESIS', 'DUBBING', 'TRANSLATION',
   'SUBTITLES', 'UPSCALING', 'SUMMARIZATION',
 ]
+
+/**
+ * Generate an image URL from Pollinations.ai (free, no API key needed).
+ * Returns a URL that can be used directly in <img src="...">.
+ */
+function generateImageUrl(prompt: string, width = 1280, height = 720, seed?: number): string {
+  const encodedPrompt = encodeURIComponent(prompt)
+  const s = seed ?? Math.floor(Math.random() * 1000000)
+  return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&seed=${s}&nologo=true&model=flux`
+}
+
+/**
+ * Fetch an image from Pollinations.ai and return as base64.
+ * This ensures the image is loaded before returning to the client.
+ */
+async function fetchImageAsBase64(prompt: string, seed: number): Promise<string | null> {
+  const url = generateImageUrl(prompt, 1280, 720, seed)
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(30000) })
+    if (!res.ok) return null
+    const buf = await res.arrayBuffer()
+    return `data:image/jpeg;base64,${Buffer.from(buf).toString('base64')}`
+  } catch {
+    return null
+  }
+}
 
 export async function GET() {
   try {
@@ -40,7 +64,6 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
 
-    // Validate
     if (!body?.prompt || typeof body.prompt !== 'string' || !body.prompt.trim()) {
       return NextResponse.json({ error: 'prompt is required' }, { status: 400 })
     }
@@ -53,7 +76,7 @@ export async function POST(req: NextRequest) {
 
     const prompt = body.prompt.trim()
 
-    // Step 1: Create the generation record in Supabase (status=QUEUED)
+    // Step 1: Create the generation record in Supabase
     let generation
     try {
       generation = await createGeneration({
@@ -63,51 +86,87 @@ export async function POST(req: NextRequest) {
         parameters: body.parameters,
         language: body.language,
       })
-    } catch (dbErr) {
-      // DB write failed (Supabase not configured) — continue with AI call anyway
+    } catch {
       generation = {
         id: `sim-${Date.now()}`,
         type: body.type,
         prompt,
-        provider: isGeminiConfigured() ? 'google-gemini' : 'demo',
+        provider: 'demo',
         status: 'QUEUED',
         parameters: null,
-        language: body.language || null,
+        language: null,
         credits_used: 1,
-        error_message: dbErr instanceof Error ? dbErr.message : null,
+        error_message: null,
         started_at: null,
         completed_at: null,
         created_at: new Date().toISOString(),
       }
     }
 
-    // Step 2: Call Gemini if the API key is configured
+    // Step 2: Generate storyboard (Gemini or fallback)
     let storyboard = null
     let aiError = null
 
-    if (isGeminiConfigured()) {
-      try {
-        // Update status to PROCESSING (if DB is available)
-        if (!generation.id.startsWith('sim-')) {
-          await updateGenerationStatus(generation.id, 'PROCESSING').catch(() => {})
-        }
+    try {
+      if (!generation.id.startsWith('sim-')) {
+        await updateGenerationStatus(generation.id, 'PROCESSING').catch(() => {})
+      }
 
-        // Generate a storyboard from the prompt
+      if (isGeminiConfigured()) {
         storyboard = await generateStoryboard(prompt)
+      } else {
+        // Fallback: create a simple 3-scene storyboard from the prompt
+        storyboard = {
+          scenes: [
+            {
+              order: 1,
+              title: 'Opening Scene',
+              description: `${prompt} — establishing shot, wide angle, cinematic lighting`,
+              duration: 5,
+              visualCues: ['cinematic', 'wide shot', 'establishing'],
+              narration: '',
+            },
+            {
+              order: 2,
+              title: 'Main Action',
+              description: `${prompt} — close-up action, dynamic camera movement, dramatic lighting`,
+              duration: 5,
+              visualCues: ['close-up', 'dynamic', 'action'],
+              narration: '',
+            },
+            {
+              order: 3,
+              title: 'Closing Scene',
+              description: `${prompt} — final shot, pulling back, fade to black`,
+              duration: 5,
+              visualCues: ['pull back', 'fade', 'cinematic'],
+              narration: '',
+            },
+          ],
+          totalDuration: 15,
+          estimatedCredits: 3,
+        }
+      }
 
-        // Update the generation record with the result (if DB is available)
-        if (!generation.id.startsWith('sim-')) {
-          await updateGenerationStatus(generation.id, 'COMPLETED').catch(() => {})
-        }
-      } catch (aiErr) {
-        aiError = aiErr instanceof Error ? aiErr.message : 'AI generation failed'
-        if (!generation.id.startsWith('sim-')) {
-          await updateGenerationStatus(generation.id, 'FAILED', aiError).catch(() => {})
-        }
+      if (!generation.id.startsWith('sim-')) {
+        await updateGenerationStatus(generation.id, 'COMPLETED').catch(() => {})
+      }
+    } catch (err) {
+      aiError = err instanceof Error ? err.message : 'AI generation failed'
+      if (!generation.id.startsWith('sim-')) {
+        await updateGenerationStatus(generation.id, 'FAILED', aiError).catch(() => {})
       }
     }
 
-    // Step 3: Return the result
+    // Step 3: Generate images for each scene using Pollinations.ai (FREE)
+    if (storyboard?.scenes?.length > 0) {
+      const imagePromises = storyboard.scenes.map((scene, i) =>
+        fetchImageAsBase64(scene.description || prompt, i * 1000 + 42)
+          .then((base64) => ({ ...scene, imageUrl: base64 || generateImageUrl(scene.description || prompt, 1280, 720, i * 1000 + 42) }))
+      )
+      storyboard.scenes = await Promise.all(imagePromises)
+    }
+
     return NextResponse.json({
       generation,
       storyboard,
@@ -116,7 +175,6 @@ export async function POST(req: NextRequest) {
       dbEnabled: !generation.id.startsWith('sim-'),
     }, { status: 201 })
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Failed to create generation'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to create generation' }, { status: 500 })
   }
 }

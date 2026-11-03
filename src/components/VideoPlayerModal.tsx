@@ -12,6 +12,7 @@ interface Scene {
   duration: number
   visualCues: string[]
   narration: string
+  imageUrl?: string  // AI-generated image from Pollinations.ai
 }
 
 interface VideoPlayerModalProps {
@@ -150,16 +151,54 @@ export default function VideoPlayerModal({ open, onClose, scenes, prompt }: Vide
             {/* Video area — 16:9 aspect ratio */}
             <div
               className="relative aspect-video overflow-hidden"
-              style={{ background: sceneGradients[currentScene % sceneGradients.length] }}
+              style={{ background: scene.imageUrl ? '#000' : sceneGradients[currentScene % sceneGradients.length] }}
             >
+              {/* AI-generated image as scene background with Ken Burns effect */}
+              {scene.imageUrl && (
+                <motion.img
+                  key={`img-${currentScene}`}
+                  src={scene.imageUrl}
+                  alt={scene.title}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  initial={{ scale: 1.15, opacity: 0, x: -20 }}
+                  animate={{ scale: 1.0, opacity: 1, x: 0 }}
+                  transition={{ duration: 1.5, ease: 'easeOut' }}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none'
+                  }}
+                />
+              )}
+
+              {/* Secondary zoom layer for continuous Ken Burns motion */}
+              {scene.imageUrl && playing && (
+                <motion.div
+                  className="absolute inset-0 pointer-events-none"
+                  initial={{ scale: 1.0 }}
+                  animate={{ scale: 1.08 }}
+                  transition={{ duration: (scene.duration || 5), ease: 'linear' }}
+                  style={{
+                    backgroundImage: `url(${scene.imageUrl})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  }}
+                />
+              )}
+
+              {/* Dark gradient overlay for text readability */}
+              {scene.imageUrl && (
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/40" />
+              )}
+
               {/* Animated grid overlay */}
-              <div
-                className="absolute inset-0 opacity-10"
-                style={{
-                  backgroundImage: 'linear-gradient(rgba(168,85,247,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(168,85,247,0.5) 1px, transparent 1px)',
-                  backgroundSize: '50px 50px',
-                }}
-              />
+              {!scene.imageUrl && (
+                <div
+                  className="absolute inset-0 opacity-10"
+                  style={{
+                    backgroundImage: 'linear-gradient(rgba(168,85,247,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(168,85,247,0.5) 1px, transparent 1px)',
+                    backgroundSize: '50px 50px',
+                  }}
+                />
+              )}
 
               {/* Floating particles */}
               {Array.from({ length: 15 }).map((_, i) => (
