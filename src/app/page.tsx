@@ -17,6 +17,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import TodoWidget from '@/features/todos/TodoWidget'
 import AuthModal from '@/components/AuthModal'
+import IntroAnimation from '@/components/IntroAnimation'
+import VideoPlayerModal from '@/components/VideoPlayerModal'
 
 // ═══════════════════════════════════════════════════════════════
 //  Data
@@ -115,6 +117,8 @@ export default function Home() {
   const [authOpen, setAuthOpen] = useState(false)
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login')
   const [user, setUser] = useState<{ id: string; email: string } | null>(null)
+  const [introComplete, setIntroComplete] = useState(false)
+  const [playerOpen, setPlayerOpen] = useState(false)
 
   // Toggle dark mode class on <html>
   useEffect(() => {
@@ -189,6 +193,17 @@ export default function Home() {
   const openSignup = () => { setAuthMode('signup'); setAuthOpen(true) }
 
   return (
+    <>
+      {/* ─── 3D Intro Animation ─── */}
+      <IntroAnimation onComplete={() => setIntroComplete(true)} />
+
+      {/* ─── Main App (revealed after intro) ─── */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: introComplete ? 1 : 0 }}
+        transition={{ duration: 0.6, ease: 'easeOut' }}
+        className={introComplete ? '' : 'pointer-events-none fixed inset-0 overflow-hidden'}
+      >
     <div className="min-h-screen bg-background text-foreground mesh-bg overflow-x-hidden">
       {/* ─── Nav ─── */}
       <Navbar darkMode={darkMode} setDarkMode={setDarkMode} menuOpen={menuOpen} setMenuOpen={setMenuOpen} onLogin={openLogin} onSignup={openSignup} user={user} />
@@ -207,6 +222,7 @@ export default function Home() {
         genError={genError}
         storyboard={storyboard}
         geminiEnabled={geminiEnabled}
+        onPlay={() => setPlayerOpen(true)}
       />
 
       {/* ─── Stats ─── */}
@@ -243,7 +259,17 @@ export default function Home() {
         initialMode={authMode}
         onSuccess={(u) => setUser(u)}
       />
+
+      {/* ─── Video Player Modal ─── */}
+      <VideoPlayerModal
+        open={playerOpen}
+        onClose={() => setPlayerOpen(false)}
+        scenes={storyboard || []}
+        prompt={prompt}
+      />
     </div>
+      </motion.div>
+    </>
   )
 }
 
@@ -439,7 +465,7 @@ function Hero({ onGenerate, prompt, setPrompt }: {
 //  Generation Demo (simulated pipeline)
 // ═══════════════════════════════════════════════════════════════
 
-function GenerationDemo({ prompt, generating, genStep, genComplete, onReset, generationId, genError, storyboard, geminiEnabled }: {
+function GenerationDemo({ prompt, generating, genStep, genComplete, onReset, generationId, genError, storyboard, geminiEnabled, onPlay }: {
   prompt: string
   generating: boolean
   genStep: number
@@ -451,6 +477,7 @@ function GenerationDemo({ prompt, generating, genStep, genComplete, onReset, gen
     order: number; title: string; description: string; duration: number; visualCues: string[]; narration: string
   }> | null
   geminiEnabled: boolean
+  onPlay: () => void
 }) {
   const showDemo = generating || genComplete || !!storyboard
   if (!showDemo && !prompt) return null
@@ -507,15 +534,31 @@ function GenerationDemo({ prompt, generating, genStep, genComplete, onReset, gen
                           animate={{ scale: 1, opacity: 1 }}
                           className="mb-4"
                         >
-                          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/50">
-                            <Play className="w-7 h-7 text-white ml-1" />
-                          </div>
+                          <button
+                            onClick={onPlay}
+                            disabled={!storyboard || storyboard.length === 0}
+                            className="group w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/50 hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                            aria-label="Play video"
+                          >
+                            <Play className="w-7 h-7 text-white ml-1 group-hover:scale-110 transition-transform" />
+                          </button>
                         </motion.div>
-                        <p className="text-lg font-medium text-white">Video ready!</p>
-                        <p className="text-sm text-purple-300/60 mt-1">4K · 30fps · 15 seconds</p>
-                        <Button onClick={onReset} variant="secondary" size="sm" className="mt-4">
-                          Generate another
-                        </Button>
+                        <p className="text-lg font-medium text-white">
+                          {storyboard && storyboard.length > 0 ? 'Video ready — click to play!' : 'Video ready!'}
+                        </p>
+                        <p className="text-sm text-purple-300/60 mt-1">
+                          {storyboard ? `${storyboard.length} scenes · ${storyboard.reduce((s, sc) => s + sc.duration, 0)}s total` : '4K · 30fps · 15 seconds'}
+                        </p>
+                        <div className="flex gap-2 mt-4">
+                          {storyboard && storyboard.length > 0 && (
+                            <Button onClick={onPlay} size="sm" className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+                              <Play className="w-4 h-4 mr-1" /> Play
+                            </Button>
+                          )}
+                          <Button onClick={onReset} variant="secondary" size="sm">
+                            Generate another
+                          </Button>
+                        </div>
                       </>
                     ) : null}
                   </div>
