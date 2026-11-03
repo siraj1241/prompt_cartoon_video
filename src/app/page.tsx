@@ -229,10 +229,39 @@ export default function Home() {
       <StatsBar />
 
       {/* ─── Features Grid ─── */}
-      <FeaturesSection />
+      <FeaturesSection onFeatureClick={(feature) => {
+        // Click a feature → scroll to top + prefill the prompt with a relevant example
+        const examples: Record<string, string> = {
+          'Text → Video': 'A cinematic shot of a city at sunset, 4K, dramatic lighting',
+          'Image → Video': 'A still photo of a mountain landscape coming to life with motion',
+          'Video → Video': 'Transform a video into an anime style with vibrant colors',
+          'Script → Video': 'A 3-scene video about a boy going to school, narrated',
+          'AI Image Gen': 'A hyperrealistic portrait of a robot, studio lighting, 8K',
+          'AI Voice': 'A warm female voice saying welcome to our platform',
+          'Text → Speech': 'Convert this text to natural speech in English',
+          'AI Subtitles': 'Generate subtitles for a 30 second product demo video',
+          'Translation': 'Translate a video from English to Hindi with voice dubbing',
+          'AI Dubbing': 'Dub a video from English to Spanish with lip sync',
+          'Background Music': 'Generate upbeat background music for a tech product video',
+          'Format Resize': 'Resize a 16:9 video to 9:16 vertical for TikTok',
+          'Upscaling': 'Upscale a 720p video to 4K with AI enhancement',
+          'Video Summarization': 'Summarize a 10 minute video into a 30 second highlight reel',
+          'Scene Generation': 'Auto-split a script into 5 visual scenes with descriptions',
+          'AI Avatars': 'A realistic AI presenter speaking about climate change',
+          'Style Transfer': 'Apply Van Gogh Starry Night style to a city video',
+          'Smart Editing': 'AI suggests the best cuts and transitions for a vlog',
+        }
+        const example = examples[feature.title] || `${feature.title}: create a sample video`
+        setPrompt(example)
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }} />
 
       {/* ─── Languages ─── */}
-      <LanguagesSection />
+      <LanguagesSection onLanguageClick={(lang) => {
+        // Click a language → scroll to top + prefill prompt with language context
+        setPrompt(`Create a video about a boy going to school, narrated in ${lang}`)
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }} />
 
       {/* ─── Editor Preview ─── */}
       <EditorSection />
@@ -702,7 +731,7 @@ function StatsBar() {
 //  Features
 // ═══════════════════════════════════════════════════════════════
 
-function FeaturesSection() {
+function FeaturesSection({ onFeatureClick }: { onFeatureClick: (feature: typeof AI_FEATURES[0]) => void }) {
   return (
     <section id="features" className="py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -714,7 +743,7 @@ function FeaturesSection() {
             One platform.<br /><span className="text-gradient">Every AI tool.</span>
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
-            18 production-ready AI capabilities, extensible provider architecture,
+            Click any tool to try it. 18 production-ready AI capabilities, extensible provider architecture,
             and a unified API for the entire video pipeline.
           </p>
         </div>
@@ -731,13 +760,21 @@ function FeaturesSection() {
                 transition={{ delay: (i % 4) * 0.08 }}
                 whileHover={{ y: -4 }}
               >
-                <Card className="p-5 h-full border-border/60 hover:border-purple-500/30 hover:shadow-xl hover:shadow-purple-500/5 transition-all duration-300">
-                  <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${feature.color} flex items-center justify-center mb-4 shadow-lg`}>
-                    <Icon className="w-5 h-5 text-white" />
-                  </div>
-                  <h3 className="font-semibold text-base">{feature.title}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground leading-relaxed">{feature.desc}</p>
-                </Card>
+                <button
+                  onClick={() => onFeatureClick(feature)}
+                  className="w-full text-left"
+                >
+                  <Card className="p-5 h-full border-border/60 hover:border-purple-500/30 hover:shadow-xl hover:shadow-purple-500/5 transition-all duration-300 cursor-pointer">
+                    <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${feature.color} flex items-center justify-center mb-4 shadow-lg`}>
+                      <Icon className="w-5 h-5 text-white" />
+                    </div>
+                    <h3 className="font-semibold text-base">{feature.title}</h3>
+                    <p className="mt-1 text-sm text-muted-foreground leading-relaxed">{feature.desc}</p>
+                    <div className="mt-3 flex items-center gap-1 text-xs font-semibold text-purple-500">
+                      Try it <ArrowRight className="w-3 h-3" />
+                    </div>
+                  </Card>
+                </button>
               </motion.div>
             )
           })}
@@ -751,7 +788,7 @@ function FeaturesSection() {
 //  Languages
 // ═══════════════════════════════════════════════════════════════
 
-function LanguagesSection() {
+function LanguagesSection({ onLanguageClick }: { onLanguageClick: (lang: string) => void }) {
   return (
     <section id="languages" className="py-24 bg-card/30 backdrop-blur border-y border-border/40">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 text-center">
@@ -762,8 +799,7 @@ function LanguagesSection() {
           Speak to the <span className="text-gradient">whole world</span>
         </h2>
         <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-          Voice synthesis, dubbing, and subtitles in 50+ languages.
-          Extensible architecture — add new languages without touching core code.
+          Click a language to generate a video in that language. Voice synthesis, dubbing, and subtitles in 50+ languages.
         </p>
 
         <div className="mt-12 flex flex-wrap justify-center gap-3">
@@ -776,9 +812,11 @@ function LanguagesSection() {
               transition={{ delay: i * 0.04 }}
               whileHover={{ scale: 1.05, y: -2 }}
             >
-              <Badge variant="outline" className="px-4 py-2 text-sm font-medium border-border/60 hover:border-purple-500/40 cursor-default">
-                {lang}
-              </Badge>
+              <button onClick={() => onLanguageClick(lang)} className="cursor-pointer">
+                <Badge variant="outline" className="px-4 py-2 text-sm font-medium border-border/60 hover:border-purple-500/40 hover:bg-purple-500/5 transition-all">
+                  {lang}
+                </Badge>
+              </button>
             </motion.div>
           ))}
           <Badge className="px-4 py-2 text-sm bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-purple-500/20">
